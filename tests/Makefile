@@ -6,7 +6,7 @@
 # Toolchain and Directories
 # =========================
 CXX_VERSION     := c++17
-TOOL_PATH       ?= sfpi/compiler/bin
+TOOL_PATH       ?= /home/jax/work/tt/sfpi/compiler/bin
 
 # =========================
 # Architecture Selection
@@ -14,18 +14,18 @@ TOOL_PATH       ?= sfpi/compiler/bin
 ARCH            := $(if $(archname),$(archname),$(CHIP_ARCH))
 ifeq ($(ARCH),wormhole)
 	ARCH_NON_COMPUTE:= -mcpu=tt-wh
-	ARCH_COMPUTE    := -mcpu=tt-wh-tensix
+	ARCH_COMPUTE    := -mcpu=tt-wh
 	ARCH_DEFINE     := -DARCH_WORMHOLE
 	ARCH_LLK_ROOT   := tt_llk_wormhole_b0
 else ifeq ($(ARCH),blackhole)
 	ARCH_NON_COMPUTE:= -mcpu=tt-bh
-	ARCH_COMPUTE    := -mcpu=tt-bh-tensix
+	ARCH_COMPUTE    := -mcpu=tt-bh
 	ARCH_DEFINE     := -DARCH_BLACKHOLE
 	ARCH_LLK_ROOT   := tt_llk_blackhole
 else ifeq ($(ARCH),quasar)
 # until there is official support for quasar in SFPI fallback to BH
 	ARCH_NON_COMPUTE:= -mcpu=tt-bh
-	ARCH_COMPUTE    := -mcpu=tt-bh-tensix
+	ARCH_COMPUTE    := -mcpu=tt-bh
 	ARCH_DEFINE     := -DARCH_QUASAR
 	ARCH_LLK_ROOT   := tt_llk_quasar
 else
@@ -80,7 +80,7 @@ endif
 
 OPTIONS_LINK	:= -fexceptions -Wl,-z,max-page-size=16 -Wl,-z,common-page-size=16 -nostartfiles -Wl,--trace
 
-INCLUDES := -I../$(ARCH_LLK_ROOT)/llk_lib -I../$(ARCH_LLK_ROOT)/common/inc \
+INCLUDES := -I/home/jax/work/tt/sfpi/include/ -I../$(ARCH_LLK_ROOT)/llk_lib -I../$(ARCH_LLK_ROOT)/common/inc \
 			-I../$(ARCH_LLK_ROOT)/common/inc/sfpu -I$(HEADER_DIR) -Ifirmware/riscv/common \
 			-Isfpi/include -Ihelpers/include
 
@@ -146,15 +146,17 @@ $(SHARED_ELF_DIR)/brisc.elf: $(SHARED_OBJ_DIR)/tmu-crt0.o $(SHARED_OBJ_DIR)/bris
 # disable make automatically deleting important intermediate files
 .SECONDARY: $(SHARED_OBJ_DIR)/*.o $(OBJ_DIR)/*.o
 
-# build kernel_unpack.o, kernel_math.o, kernel_pack.o from sources directory (checks ai_gen, quasar, then main)
-# Find which source file exists and determine if COMPILE_FOR_TRISC flag is needed
-KERNEL_SOURCE = $(firstword $(wildcard sources/ai_gen/$(testname).cpp sources/quasar/$(testname).cpp sources/$(testname).cpp))
-KERNEL_TRISC_FLAG = $(if $(filter sources/quasar/%,$(KERNEL_SOURCE)),,-DCOMPILE_FOR_TRISC= )
-
-$(OBJ_DIR)/kernel_%.o: $(KERNEL_SOURCE) $(BUILD_DIR)/params.stamp | $(OBJ_DIR) $(DEPS_DIR)
-	$(GXX) $(ARCH_COMPUTE) $(OPTIONS_ALL) $(OPTIONS_COMPILE) $(KERNEL_TRISC_FLAG) \
+# build kernel_unpack.o, kernel_math.o, kernel_pack.o from ai_gen subdirectory
+$(OBJ_DIR)/kernel_%.o: sources/ai_gen/$(testname).cpp $(BUILD_DIR)/params.stamp | $(OBJ_DIR) $(DEPS_DIR)
+	$(GXX) $(ARCH_COMPUTE) $(OPTIONS_ALL) $(OPTIONS_COMPILE) -DCOMPILE_FOR_TRISC= \
 	-MMD -MP -MF $(patsubst $(OBJ_DIR)/%.o,$(DEPS_DIR)/%.d,$@) \
-	-DLLK_TRISC_$(call TO_UPPER, $*) -c -o $@ $(KERNEL_SOURCE)
+	-DLLK_TRISC_$(call TO_UPPER, $*) -c -o $@ $<
+
+# build kernel_unpack.o, kernel_math.o, kernel_pack.o from main sources directory
+$(OBJ_DIR)/kernel_%.o: sources/$(testname).cpp $(BUILD_DIR)/params.stamp | $(OBJ_DIR) $(DEPS_DIR)
+	$(GXX) $(ARCH_COMPUTE) $(OPTIONS_ALL) $(OPTIONS_COMPILE) -DCOMPILE_FOR_TRISC= \
+	-MMD -MP -MF $(patsubst $(OBJ_DIR)/%.o,$(DEPS_DIR)/%.d,$@) \
+	-DLLK_TRISC_$(call TO_UPPER, $*) -c -o $@ $<
 
 # build main_unpack.o, main_math.o, main_pack.o
 $(SHARED_OBJ_DIR)/main_%.o: $(RISCV_SOURCES)/trisc.cpp $(BUILD_DIR)/params.stamp | $(SHARED_OBJ_DIR) $(SHARED_DEPS_DIR)
